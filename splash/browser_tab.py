@@ -723,10 +723,12 @@ class BrowserTab(QObject):
                 self.logger.log("Rendering whole page contents (RENDER_ALL)",
                                 min_level=2)
                 self.set_viewport('full')
-            renderer = QtImageRenderer(
-                self.web_page, self.logger, image_format,
-                width=width, height=height, scale_method=scale_method)
-            image = renderer.render_qwebpage()
+            renderer = QtImageRenderer(self.web_page, self.logger, image_format)
+            image = renderer.render(
+                width=width,
+                height=height,
+                scale_method=scale_method
+            )
         finally:
             if old_size != self.web_page.viewportSize():
                 # Let's not generate extra "set size" messages in the log.
@@ -736,7 +738,7 @@ class BrowserTab(QObject):
 
     def png(self, width=None, height=None, b64=False, render_all=False,
             scale_method=None):
-        """ Return screenshot in PNG format """
+        """ Return page screenshot in PNG format """
         self.logger.log(
             "Getting PNG: width=%s, height=%s, "
             "render_all=%s, scale_method=%s" %
@@ -750,7 +752,7 @@ class BrowserTab(QObject):
 
     def jpeg(self, width=None, height=None, b64=False, render_all=False,
              scale_method=None, quality=None):
-        """Return screenshot in JPEG format."""
+        """Return page screenshot in JPEG format."""
         self.logger.log(
             "Getting JPEG: width=%s, height=%s, "
             "render_all=%s, scale_method=%s, quality=%s" %

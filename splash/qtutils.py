@@ -299,3 +299,8 @@ def qt_header_items(request_or_reply):
         (name, request_or_reply.rawHeader(name))
         for name in request_or_reply.rawHeaderList()
     ]
+
+
+def qsize_to_tuple(sz):
+    """ Convert QSize object to a (width, height) tuple """
+    return sz.width(), sz.height()

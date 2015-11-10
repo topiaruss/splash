@@ -11,6 +11,7 @@ from PyQt5.QtCore import QBuffer, QPoint, QRect, QSize, Qt
 from PyQt5.QtGui import QImage, QPainter, QRegion
 
 from splash import defaults
+from splash.qtutils import qsize_to_tuple
 
 
 class QtImageRenderer(object):
@@ -19,40 +20,77 @@ class QtImageRenderer(object):
     # this value.
     QPAINTER_MAXSIZE = 32766
 
-    def __init__(self, web_page, logger=None, image_format=None,
-                 width=None, height=None, scale_method=None):
+    # For JPEG it's okay to use this format as well, but canvas should be
+    # white to remove black areas from image where it was transparent
+    QT_IMAGE_FORMAT = QImage.Format_ARGB32
+
+    # QImage's 0xARGB in little-endian becomes [0xB, 0xG, 0xR, 0xA] for
+    # Pillow, hence the 'BGRA' decoder argument. Same for 'RGB' - 'BGR'.
+    PILLOW_IMAGE_FORMAT = 'RGBA'
+
+    # mapping is taken from
+    # https://github.com/python-pillow/Pillow/blob/2.9.0/libImaging/Pack.c#L526
+    PILLOW_DECODER_FORMAT = 'BGRA'
+
+    def __init__(self, web_page, logger=None, image_format=None):
         """Initialize renderer.
 
         :type web_page: PyQt5.QtWebKit.QWebPage
         :type logger: splash.browser_tab._BrowserTabLogger
         :type image_format: str {'PNG', 'JPEG'}
-        :type width: int
-        :type height: int
-        :type scale_method: str {'raster', 'vector'}
-
         """
         self.web_page = web_page
         if logger is None:
             logger = _DummyLogger()
         self.logger = logger
-        self.width = width
-        self.height = height
-        if scale_method is None:
-            scale_method = defaults.IMAGE_SCALE_METHOD
-        self.scale_method = scale_method
         self.image_format = image_format.upper()
         if not (self.is_png() or self.is_jpeg()):
             raise ValueError('Unexpected image format %s, should be PNG or JPEG' %
                              self.image_format)
-        # For JPEG it's okay to use this format as well, but canvas should be
-        # white to remove black areas from image where it was transparent
-        self.qt_image_format = QImage.Format_ARGB32
-        # QImage's 0xARGB in little-endian becomes [0xB, 0xG, 0xR, 0xA] for
-        # Pillow, hence the 'BGRA' decoder argument. Same for 'RGB' - 'BGR'.
-        self.pillow_image_format = 'RGBA'
-        # mapping is taken from
-        # https://github.com/python-pillow/Pillow/blob/2.9.0/libImaging/Pack.c#L526
-        self.pillow_decoder_format = 'BGRA'
+
+    def render(self, width, height, scale_method=None):
+        """
+        Render a region of QWebPage into a WrappedImage.
+
+        :param int width: width of the resulting image, in px
+        :param int height: height of the resulting image, in px
+        :param str scale_method: scale method, 'raster' or 'vector'
+
+        :rtype: WrappedImage
+
+        """
+        # Overall rendering pipeline looks as follows:
+        # 1. render
+        # 2. render_qwebpage_raster/-vector
+        # 3. render_qwebpage_impl
+        # 4. render_qwebpage_full/-tiled
+
+        render = self._get_render_function(scale_method)
+
+        web_viewport = QRect(QPoint(0, 0), self.web_page.viewportSize())
+        img_viewport, img_size = self._calculate_image_parameters(
+            web_viewport, width, height)
+        self.logger.log("image render: output size=%s, viewport=%s" %
+                        (img_size, img_viewport), min_level=2)
+
+        return render(
+            in_viewport=web_viewport,
+            out_viewport=img_viewport,
+            image_size=img_size
+        )
+
+    def _get_render_function(self, scale_method=None):
+        render_functions = {
+            'vector': self._render_qwebpage_vector,
+            'raster': self._render_qwebpage_raster
+        }
+        if scale_method is None:
+            scale_method = defaults.IMAGE_SCALE_METHOD
+        if scale_method not in render_functions:
+            raise ValueError(
+                "Invalid scale method (must be 'vector' or 'raster'): %s" %
+                str(scale_method))
+        return render_functions[scale_method]
 
     def is_jpeg(self):
         return self.image_format == 'JPEG'
@@ -67,7 +105,7 @@ class QtImageRenderer(object):
         # Pillow.
         buf = qimage.bits().asstring(qimage.byteCount())
         if sys.byteorder != "little":
-            buf = self.swap_byte_order_i32(buf)
+            buf = swap_byte_order_i32(buf)
         # PIL>2.0 doesn't have fromstring. But older ones don't have frombytes.
         if hasattr(Image, 'frombytes'):
             frombytes = Image.frombytes
@@ -75,45 +113,9 @@ class QtImageRenderer(object):
             frombytes = Image.fromstring
 
         return frombytes(
-            self.pillow_image_format,
-            self._qsize_to_tuple(qimage.size()),
-            buf, 'raw', self.pillow_decoder_format)
-
-    def swap_byte_order_i32(self, buf):
-        """Swap order of bytes in each 32-bit word of given byte sequence."""
-        arr = array.array('I')
-        arr.fromstring(buf)
-        arr.byteswap()
-        return arr.tostring()
-
-    def render_qwebpage(self):
-        """
-        Render QWebPage into a WrappedImage.
-
-        :rtype: WrappedImage
-
-        """
-        # Overall rendering pipeline looks as follows:
-        # 1. render_qwebpage
-        # 2. render_qwebpage_raster/-vector
-        # 3. render_qwebpage_impl
-        # 4. render_qwebpage_full/-tiled
-        web_viewport = QRect(QPoint(0, 0), self.web_page.viewportSize())
-        img_viewport, img_size = self._calculate_image_parameters(
-            web_viewport, self.width, self.height)
-        self.logger.log("image render: output size=%s, viewport=%s" %
-                        (img_size, img_viewport), min_level=2)
-
-        if self.scale_method == 'vector':
-            return self._render_qwebpage_vector(
-                in_viewport=web_viewport, out_viewport=img_viewport, image_size=img_size)
-        elif self.scale_method == 'raster':
-            return self._render_qwebpage_raster(
-                in_viewport=web_viewport, out_viewport=img_viewport, image_size=img_size)
-        else:
-            raise ValueError(
-                "Invalid scale method (must be 'vector' or 'raster'): %s" %
-                str(self.scale_method))
+            self.PILLOW_IMAGE_FORMAT,
+            qsize_to_tuple(qimage.size()),
+            buf, 'raw', self.PILLOW_DECODER_FORMAT)
 
     def _render_qwebpage_vector(self, in_viewport, out_viewport, image_size):
         """
@@ -207,7 +209,7 @@ class QtImageRenderer(object):
             # If this condition is true, this function may get stuck.
             raise ValueError("Rendering region is too large to be drawn"
                              " in one step, use tile-by-tile renderer instead")
-        canvas = QImage(canvas_size, self.qt_image_format)
+        canvas = QImage(canvas_size, self.QT_IMAGE_FORMAT)
         if self.is_jpeg():
             # White background for JPEG images, same as we have in all browsers.
             canvas.fill(Qt.white)
@@ -246,10 +248,10 @@ class QtImageRenderer(object):
         # a sudden drawImage simply stops drawing anything.  This is a known
         # limitation of Qt painting system where coordinates are signed short ints.
         # The simplest workaround that comes to mind is to use pillow for pasting.
-        tile_conf = self._calculate_tiling(
-            to_paint=render_rect.intersected(QRect(QPoint(0, 0), canvas_size)))
+        to_paint = render_rect.intersected(QRect(QPoint(0, 0), canvas_size))
+        tile_conf = self._calculate_tiling(to_paint, defaults.TILE_MAXSIZE)
 
-        canvas = Image.new(self.pillow_image_format, self._qsize_to_tuple(canvas_size))
+        canvas = Image.new(self.PILLOW_IMAGE_FORMAT, qsize_to_tuple(canvas_size))
         if self.is_jpeg():
             # Fill canvas with white color. Without this transparent parts of
             # a web page would be rendered as black.
@@ -257,7 +259,7 @@ class QtImageRenderer(object):
             # as we can see in browser.
             canvas.paste('white')
         ratio = render_rect.width() / float(web_rect.width())
-        tile_qimage = QImage(tile_conf['tile_size'], self.qt_image_format)
+        tile_qimage = QImage(tile_conf['tile_size'], self.QT_IMAGE_FORMAT)
         painter = QPainter(tile_qimage)
         try:
             painter.setRenderHint(QPainter.Antialiasing, True)
@@ -327,8 +329,15 @@ class QtImageRenderer(object):
         image_size = QSize(img_width, img_height)
         return image_viewport, image_size
 
-    def _calculate_tiling(self, to_paint):
-        tile_maxsize = defaults.TILE_MAXSIZE
+    def _calculate_tiling(self, to_paint, tile_maxsize):
+        """
+        Return tile parameters: number of columns, rows and a tile size
+        which will cover `to_paint` region.
+
+        :type to_paint: QSize
+        :type tile_maxsize: int
+        :rtype: dict
+        """
         tile_hsize = min(tile_maxsize, to_paint.width())
         tile_vsize = min(tile_maxsize, to_paint.height())
         htiles = 1 + (to_paint.width() - 1) // tile_hsize
@@ -337,9 +346,6 @@ class QtImageRenderer(object):
         return {'horizontal_count': htiles,
                 'vertical_count': vtiles,
                 'tile_size': tile_size}
-
-    def _qsize_to_tuple(self, sz):
-        return sz.width(), sz.height()
 
     def _qpainter_needs_tiling(self, render_rect, canvas_size):
         """Return True if QPainter cannot perform given render without tiling."""
@@ -472,3 +478,11 @@ class WrappedPillowImage(WrappedImage):
         buf = BytesIO()
         self.img.save(buf, 'jpeg', quality=quality)
         return buf.getvalue()
+
+
+def swap_byte_order_i32(buf):
+    """Swap order of bytes in each 32-bit word of given byte sequence."""
+    arr = array.array('I')
+    arr.fromstring(buf)
+    arr.byteswap()
+    return arr.tostring()

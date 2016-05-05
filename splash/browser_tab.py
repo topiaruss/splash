@@ -3,6 +3,7 @@ from __future__ import absolute_import
 import base64
 import functools
 import os
+import re
 import weakref
 import uuid
 
@@ -906,11 +907,12 @@ class BrowserTab(QObject):
         else:
             return self._send_text(text, key_type)
 
-        if word.startswith('<') and word.endswith('>'):
+        key_match = re.match(r'^\<(.+)\>$', word)
+        if key_match:
             # http://doc.qt.io/qt-5/qt.html#Key-enum
-            key_type = getattr(Qt, 'Key_%s' % word, None)
-            if key_type is not None:
-                return self._send_text(text='', key_type=key_type)
+            key_type = getattr(Qt, 'Key_%s' % key_match.group(1),
+                               Qt.Key_unknown)
+            return self._send_text(text='', key_type=key_type)
         # key_type=0 means "the event is not a result of a known key; for
         # example, it may be the result of a compose sequence or keyboard
         # macro."

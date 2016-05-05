@@ -870,11 +870,18 @@ class BrowserTab(QObject):
         event = QMouseEvent(type, point, q_button, buttons, modifiers)
         QApplication.postEvent(self.web_page, event)
 
+    def send_text(self, text):
+        """
+        Send full text as a sole key event to webpage
+        :param text string to be sent as input
+        :return: None
+        """
+        return self._send_text(text, key_type=0)
+
     def send_keys(self, text):
         """
         Send key events to webpage
         :param text string to be sent as key strokes
-        :param key_type string representing the pressed key
         :return: None
         """
         for word in text.split():
@@ -897,19 +904,19 @@ class BrowserTab(QObject):
         except KeyError:
             pass
         else:
-            return self._send_keys(text, key_type)
+            return self._send_text(text, key_type)
 
         if word.startswith('<') and word.endswith('>'):
             # http://doc.qt.io/qt-5/qt.html#Key-enum
             key_type = getattr(Qt, 'Key_%s' % word, None)
             if key_type is not None:
-                return self._send_keys(text='', key_type=key_type)
+                return self._send_text(text='', key_type=key_type)
         # key_type=0 means "the event is not a result of a known key; for
         # example, it may be the result of a compose sequence or keyboard
         # macro."
-        return self._send_keys(text=word, key_type=0)
+        return self._send_text(text=word, key_type=0)
 
-    def _send_keys(self, text, key_type):
+    def _send_text(self, text, key_type):
         modifiers = QApplication.keyboardModifiers()
         # Sends KeyPress event, generating `text`
         event = QKeyEvent(QEvent.KeyPress, key_type, modifiers, text)

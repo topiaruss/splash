@@ -3656,7 +3656,7 @@ class MouseEventsTest(BaseLuaRenderTest):
 
 
 class KeyEventsTest(BaseLuaRenderTest):
-    def test_send_raw_key_events(self):
+    def test_send_keys(self):
         resp = self.request_lua("""
              function main(splash)
                 assert(splash:go(splash.args.url))
@@ -3683,3 +3683,20 @@ class KeyEventsTest(BaseLuaRenderTest):
         self.assertStatusCode(resp, 200)
         expected = '|'.join(['Hello World', 'Foo Bar', 'Baz'])
         self.assertEqual(expected, resp.text)
+
+    def test_send_text(self):
+        resp = self.request_lua("""
+            function main(splash)
+                assert(splash:go(splash.args.url))
+                get_input = splash:jsfunc([[
+                    function () {
+                        return document.getElementById('text').value
+                    }
+                ]])
+                splash:send_text('Hello World!')
+                splash:wait(0)
+                return get_input()
+            end
+            """, {"url": self.mockurl("focused-input")})
+        self.assertStatusCode(resp, 200)
+        self.assertEqual('Hello World!', resp.text)

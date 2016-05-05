@@ -645,6 +645,17 @@ InputsPage = _html_resource("""
 </html>
 """)
 
+FocusedInputPage = _html_resource("""
+<html>
+    <body>
+        <textarea id="text"></textarea>
+        <script type="text/javascript">
+            document.getElementById('text').focus()
+        </script>
+    </body>
+</html>
+""")
+
 
 class HttpRedirectResource(Resource):
     def render_GET(self, request):
@@ -880,6 +891,7 @@ class Root(Resource):
         self.putChild(b"bad-content-type2", InvalidContentTypeResource2())
         self.putChild(b"jsevent", JsEventResource())
         self.putChild(b"inputs-page", InputsPage())
+        self.putChild(b"focused-input", FocusedInputPage())
 
         self.putChild(b"jsredirect", JsRedirect())
         self.putChild(b"jsredirect-to", JsRedirectTo())

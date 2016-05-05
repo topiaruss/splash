@@ -889,19 +889,28 @@ class BrowserTab(QObject):
             self._send_word(word)
 
     EDMACRO_SHORTCUTS = {
-        'RET': ('', Qt.Key_Return),
-        'SPC': (' ', Qt.Key_Space),
-        'TAB': ('\t', Qt.Key_Tab),
-        'DEL': ('', Qt.Key_Delete),
-        'ESC': ('', Qt.Key_Escape),
-        # 'LFD': ('', 0), ## QChar.LineFeed?
-        # 'NUL': ('', 0), ## QChar.Null?
+        'RET': Qt.Key_Return,
+        'SPC': Qt.Key_Space,
+        'TAB': Qt.Key_Tab,
+        'DEL': Qt.Key_Delete,
+        'ESC': Qt.Key_Escape,
+        # 'LFD': 0, ## QChar.LineFeed?
+        # 'NUL': 0, ## QChar.Null?
+    }
+
+    QT_KEY_INPUTS = {
+        # TODO: More needed?
+        Qt.Key_Return: '\n',
+        Qt.Key_Enter: '\n',
+        Qt.Key_Space: ' ',
+        Qt.Key_Tab: '\t',
     }
 
     def _send_word(self, word):
         # FIXME: support more edmacro shortcuts
         try:
-            text, key_type = self.EDMACRO_SHORTCUTS[word]
+            key_type = self.EDMACRO_SHORTCUTS[word]
+            text = self.QT_KEY_INPUTS.get(key_type, '')
         except KeyError:
             pass
         else:
@@ -912,7 +921,8 @@ class BrowserTab(QObject):
             # http://doc.qt.io/qt-5/qt.html#Key-enum
             key_type = getattr(Qt, 'Key_%s' % key_match.group(1),
                                Qt.Key_unknown)
-            return self._send_text(text='', key_type=key_type)
+            text = self.QT_KEY_INPUTS.get(key_type, '')
+            return self._send_text(text=text, key_type=key_type)
         # key_type=0 means "the event is not a result of a known key; for
         # example, it may be the result of a compose sequence or keyboard
         # macro."

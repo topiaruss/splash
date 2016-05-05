@@ -647,10 +647,37 @@ InputsPage = _html_resource("""
 
 FocusedInputPage = _html_resource("""
 <html>
-    <body>
+    <body onload="load();">
         <textarea id="text"></textarea>
         <script type="text/javascript">
-            document.getElementById('text').focus()
+            var load = function() {
+                document.getElementById('text').focus();
+            }
+        </script>
+    </body>
+</html>
+""")
+
+FormInputsEventPage = _html_resource("""
+<html>
+    <body onload="load();">
+        <h1 id="result"></h1>
+        <form>
+            <input name="username" type="text" />
+            <input name="password" type="text" />
+            <input type="submit"/>
+        </form>
+        <script type="text/javascript">
+        var load = function() {
+            document.querySelector('form').onsubmit = function(ev) {
+              var inputs = document.querySelectorAll('input[type="text"]');
+              var values = [];
+              for (var i = 0; i < inputs.length; i++)
+                  values.push(inputs[i].value);
+              document.getElementById('result').innerHTML = values.join('|');
+              return false;
+            };
+        };
         </script>
     </body>
 </html>
@@ -892,6 +919,7 @@ class Root(Resource):
         self.putChild(b"jsevent", JsEventResource())
         self.putChild(b"inputs-page", InputsPage())
         self.putChild(b"focused-input", FocusedInputPage())
+        self.putChild(b"form-inputs-event-page", FormInputsEventPage())
 
         self.putChild(b"jsredirect", JsRedirect())
         self.putChild(b"jsredirect-to", JsRedirectTo())

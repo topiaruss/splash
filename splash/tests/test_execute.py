@@ -3660,6 +3660,7 @@ class KeyEventsTest(BaseLuaRenderTest):
         resp = self.request_lua("""
              function main(splash)
                 assert(splash:go(splash.args.url))
+                assert(splash:wait(0.5))
                 join_inputs = splash:jsfunc([[
                     function () {
                         var inputs = document.getElementsByTagName('input');
@@ -3674,7 +3675,7 @@ class KeyEventsTest(BaseLuaRenderTest):
                 splash:send_keys('Foo SPC Bar')
                 splash:send_keys('TAB')
                 splash:send_keys('Baz')
-                splash:wait(0)
+                assert(splash:wait(0.5))
                 inputs = join_inputs()
                 return inputs
             end
@@ -3687,15 +3688,34 @@ class KeyEventsTest(BaseLuaRenderTest):
         resp = self.request_lua("""
             function main(splash)
                 assert(splash:go(splash.args.url))
+                assert(splash:wait(0.5))
                 get_input = splash:jsfunc([[
                     function () {
                         return document.getElementById('text').value
                     }
                 ]])
                 splash:send_text('Hello World!')
-                splash:wait(0)
+                assert(splash:wait(0.5))
                 return get_input()
             end
             """, {"url": self.mockurl("focused-input")})
         self.assertStatusCode(resp, 200)
         self.assertEqual('Hello World!', resp.text)
+
+    def test_send_keys_enter_event(self):
+        resp = self.request_lua("""
+            function main(splash)
+                assert(splash:go(splash.args.url))
+                assert(splash:wait(0.5))
+                get_result = splash:jsfunc([[
+                    function () {
+                        return document.getElementById('result').innerHTML
+                    }
+                ]])
+                splash:send_keys('<Tab> Username <Tab> Password <Return>')
+                assert(splash:wait(0.5))
+                return get_result()
+            end
+            """, {"url": self.mockurl("form-inputs-event-page")})
+        self.assertStatusCode(resp, 200)
+        self.assertEqual('Username|Password', resp.text)
